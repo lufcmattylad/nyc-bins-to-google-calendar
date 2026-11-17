@@ -267,17 +267,21 @@ def sync(collections: list[tuple[dt.date, str]], dry_run: bool) -> None:
     if not wanted:
         log.info("No upcoming collections to sync")
         return
+    # Only reconcile within the window the council currently lists. Anything before
+    # its first date is history (e.g. today's row dropped once collected) and
+    # anything after its last date hasn't been published yet - leave both alone.
+    first_date = min(d for d, _ in wanted.values())
     last_date = max(d for d, _ in wanted.values())
 
     service = get_calendar_service()
-    existing = list_synced_events(service, today, last_date)
+    existing = list_synced_events(service, first_date, last_date)
 
     existing_by_key = {}
     to_delete = []
     for ev in existing:
         key = ev.get("extendedProperties", {}).get("private", {}).get("binKey")
         ev_date = dt.date.fromisoformat(ev["start"].get("date", "1970-01-01"))
-        if ev_date < today or ev_date > last_date:
+        if ev_date < first_date or ev_date > last_date:
             continue  # outside the window the council gave us - leave alone
         if key in wanted and key not in existing_by_key:
             existing_by_key[key] = ev
