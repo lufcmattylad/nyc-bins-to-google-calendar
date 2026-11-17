@@ -1,0 +1,54 @@
+name: Sync bin calendar
+
+# Triggered daily by an external scheduler (e.g. cron-job.org) via the GitHub API,
+# rather than `schedule:`, which GitHub disables after 60 days of repo inactivity.
+# To use GitHub's own scheduler instead, add:
+#   schedule:
+#     - cron: "15 5 * * *"
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (show counts only, change nothing)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BIN_AREA: ${{ secrets.BIN_AREA }}
+      BIN_UPRN: ${{ secrets.BIN_UPRN }}
+      GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - name: Check configuration
+        id: config
+        run: |
+          if [ -z "$BIN_UPRN" ] || [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::notice::Secrets not configured - skipping. See README to set this up."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.ready == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.config.outputs.ready == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        if: steps.config.outputs.ready == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Sync
+        if: steps.config.outputs.ready == 'true'
+        run: python bin_calendar_sync.py ${{ inputs.dry_run && '--dry-run' || '' }}
